@@ -143,7 +143,7 @@ requirements.txt
 README.md
 ```
 
-## Future Work (beyond this demo — 10-month full project)
+## Future Work (beyond this demo — 4-month full project)
 
 - Resolve long-term LLM API access (current plan uses region/VPN workarounds that carry risk of being cut off)
 - Expand dataset with genre, cast, director, country, and release-date metadata to enable filtering
