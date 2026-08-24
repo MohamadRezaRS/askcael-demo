@@ -66,7 +66,7 @@ def scrape_movie_data():
             executor.map(parse_page, thread_urls)
     print('\nFinished Scraping...')
     movies_infos = json.dumps(movies_infos, indent=1)
-    with open('data/movies_infos_raw.json', 'w') as file:
+    with open('data/movies.json', 'w') as file:
         file.write(movies_infos)
 
 
