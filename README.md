@@ -90,17 +90,17 @@ LangChain is used here specifically because it has existing abstractions that ma
 
 ## Configuration & Secrets
 
-The Gemini API key and MSSQL server name must never be hardcoded or committed to version control. Instead:
+
 
 - All secrets (API key, MSSQL server/connection details) live in a local file inside a dedicated folder, e.g. `secrets/config.txt`, which is never committed
 - `config.py` reads its values from that file at startup — no secret values appear directly in any source file
 - The `secrets/` folder is listed in `.gitignore`, along with standard Python ignores (`__pycache__/`, `*.pyc`, virtual environment folders, etc.)
-- A `secrets/config.example.txt` template, with placeholder values only, **is** committed — so anyone cloning the repo (including the AI coding agent building this) knows what keys/fields are expected without exposing real values
+- A `secrets/config.example.txt` template, with placeholder values only, **is** committed — so anyone cloning the repo knows what keys/fields are expected without exposing real values
 
 ## Known Limitations (demo scope)
 
 - The current dataset (`movies.json`) contains only titles and summaries — no genre, cast, director, or country metadata. Filtering by these fields is part of the target architecture but is **not functional in this demo** since the underlying data doesn't support it yet. Metadata-based filtering is planned for the full project once the database is expanded.
-- Single category only (movies). Series, books, games, and songs are planned for the full project, not this demo.
+- Single category only (movies). Series, games are planned for the full project, not this demo.
 - Terminal interface only — no web app in this phase.
 
 ## Suggested Project Structure
@@ -124,7 +124,7 @@ requirements.txt
 README.md
 ```
 
-## Future Work (beyond this demo — 10-month full project)
+## Future Work (beyond this demo — 4-month full project)
 
 - Resolve long-term LLM API access (current plan uses region/VPN workarounds that carry risk of being cut off)
 - Expand dataset with genre, cast, director, country, and release-date metadata to enable filtering
