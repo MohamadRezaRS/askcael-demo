@@ -1,4 +1,4 @@
-# Movie Recommendation System — RAG Demo
+# AskCael — Movie Recommendation System RAG Demo
 
 ## Objective
 
