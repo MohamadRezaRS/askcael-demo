@@ -1,4 +1,4 @@
-# AskCael — Movie Recommendation System RAG Demo
+# AskCael — Movie Recommendation RAG Demo
 
 ## Objective
 
@@ -6,13 +6,19 @@ A conversational movie recommendation system that takes natural-language input (
 
 This document describes the **demo scope**: a terminal application (no web interface) that proves out the core retrieval and generation pipeline. It is intended to be shown to a university supervisor as evidence the full project is feasible, ahead of a 10-month full build (web app, larger multi-category database, full deployment).
 
+## Project Naming
+
+The project is named **AskCael**, with `askcael.ir` and `askcael.com` reserved as the eventual domains. This repository, `askcael-demo`, holds only the terminal-based demo described here; the full web-deployed version will be forked from this repo into a separate `askcael` repository once the demo is approved.
+
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
     subgraph Setup["Phase 1 — One-time setup (Python)"]
-        A[movies.json<br/>250 IMDb movies] --> B[Generate embeddings]
-        B --> C[(MSSQL<br/>vector table)]
+        A[movies.json<br/>250 IMDb movies] --> B1[Generate embeddings<br/>Google model]
+        A --> B2[Generate embeddings<br/>offline model]
+        B1 --> C1[(MSSQL<br/>Google-embedding table)]
+        B2 --> C2[(MSSQL<br/>offline-embedding table)]
     end
 
     subgraph Runtime["Phase 2 — Query pipeline (LangChain)"]
@@ -24,7 +30,7 @@ flowchart TD
         E -->|Multiple titles| J[Combined summaries -> HyDE]
         E -->|Multiple titles + modifier| K[Combined summaries + constraint -> HyDE]
 
-        F --> L[Embed text]
+        F --> L[Embed text<br/>with active model]
         G --> L
         I --> L
         J --> L
@@ -32,25 +38,22 @@ flowchart TD
         L --> M[Anchor vector]
         H --> M
 
-        M --> N[Vector similarity search<br/>top-N, MSSQL]
-        N --> O[Re-rank candidates<br/>vs. original query + constraints]
-        O --> P{Self-correction check<br/>confident enough?}
-        P -->|Yes| Q[Generate final response]
-        P -->|No, first attempt| S[Retry: broaden search /<br/>regenerate query expansion]
-        S --> N
-        P -->|No, already retried once| Q2[Generate response with<br/>explicit low-confidence caveat]
+        M --> N[Pull candidate vectors from<br/>matching MSSQL table]
+        N --> N2[Compute similarity in Python<br/>NumPy cosine similarity]
+        N2 --> O[Re-rank candidates<br/>vs. original query + constraints]
+        O --> Q[Generate final response]
         Q --> R[Terminal output]
-        Q2 --> R
     end
 
-    C -.pre-indexed vectors.-> N
+    C1 -.if Google model active.-> N
+    C2 -.if offline model active.-> N
 ```
 
 ## Pipeline Phases
 
 ### Phase 1 — Database setup (plain Python, run once)
 
-A standalone script reads `movies.json`, generates an embedding for each movie summary, and writes `title`, `summary`, and the resulting vector into an MSSQL table (SQL Server 2025's native `VECTOR` type). This runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
+A standalone script reads `movies.json` and generates embeddings for each movie summary using **two separate embedding models: Google's embedding API, and an offline model (specific choice TBD)**. Because vectors from different embedding models are not comparable to each other, each model's output goes into its own MSSQL table (`title`, `summary`, `vector`, using SQL Server 2025's native `VECTOR` type). Which table is queried at runtime depends on which embedding model is currently active — this is a fixed choice per run, not an automatic runtime fallback. This setup runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
 
 ### Phase 2 — Query pipeline (LangChain)
 
@@ -58,12 +61,11 @@ Everything that happens per user query is built as LangChain components rather t
 
 - **Query classification / routing** — determines which of the six query-type cases (below) applies
 - **Query expansion (HyDE)** — for vague or comparison-style queries, an LLM generates a hypothetical full-length summary before embedding, closing the gap between short queries and long stored summaries
-- **Retrieval** — vector similarity search against the MSSQL-stored embeddings, returning the top-N nearest movies
+- **Retrieval** — the installed SQL Server 2025 instance supports the `VECTOR` column type but not built-in semantic search, so the pipeline pulls candidate vectors from the matching MSSQL table (Google or offline, whichever is active) into Python and computes cosine similarity with NumPy to get the top-N nearest movies
 - **Re-ranking** — a second LLM pass re-scores the retrieved candidates against the original user intent, correcting cases where embedding similarity alone picked a merely-adjacent result
-- **Self-correction** — a confidence check on the re-ranked candidates; if quality looks weak, the pipeline retries once — broadening the search or regenerating the query expansion — before falling back to a final response with an explicit low-confidence caveat if the retry still doesn't produce a strong match. The retry is capped at one attempt to keep response time bounded.
 - **Response generation** — the LLM turns the anchor movie, retrieved candidates, and original query into a natural-language recommendation, instructed to reference only the retrieved candidates (no invented titles)
 
-LangChain is used here specifically because it has existing abstractions that map onto these concepts (hypothetical-document embedding for query expansion, contextual compression / re-ranking retrievers, and graph-based orchestration for the self-correction loop) — the goal is to use those idioms rather than reimplementing this control flow from scratch.
+LangChain is used here specifically because it has existing abstractions that map onto these concepts (hypothetical-document embedding for query expansion, contextual compression / re-ranking retrievers) — the goal is to use those idioms rather than reimplementing this control flow from scratch. Self-correction (a confidence-check retry loop) is deliberately left out of this demo — see Future Work.
 
 ## Query Type Handling
 
@@ -80,8 +82,8 @@ LangChain is used here specifically because it has existing abstractions that ma
 
 - **Orchestration:** LangChain (query pipeline only — not database setup)
 - **LLM:** Gemini API (Flash / Flash-Lite, free tier) — local Ollama model as offline fallback
-- **Embeddings:** Gemini embedding model (free tier) — `sentence-transformers` as offline fallback
-- **Database:** MSSQL (SQL Server 2025), native `VECTOR` column type, brute-force `VECTOR_DISTANCE` search (no ANN index needed at this data scale)
+- **Embeddings:** two options, Google's embedding model or an offline embedding model (specific choice TBD) — since the two are not vector-compatible, each has its own MSSQL table, and only one is active per run (no automatic runtime fallback between them)
+- **Database:** MSSQL (SQL Server 2025), native `VECTOR` column type. The installed instance does not have semantic search / native distance functions enabled, so similarity is computed in Python with NumPy after pulling candidate vectors, not via an in-database vector search function
 - **Interface:** terminal only for this demo — no web layer
 
 ## Data Acquisition
@@ -89,8 +91,6 @@ LangChain is used here specifically because it has existing abstractions that ma
 `movies.json` was produced by an existing web scraper, already built and used to collect the 250 IMDb movie titles and summaries that make up the demo dataset. This is a one-off script, run separately from the pipeline described above — it is not part of the Phase 1/Phase 2 flow, it just produces the input file that Phase 1 consumes.
 
 ## Configuration & Secrets
-
-
 
 - All secrets (API key, MSSQL server/connection details) live in a local file inside a dedicated folder, e.g. `secrets/config.txt`, which is never committed
 - `config.py` reads its values from that file at startup — no secret values appear directly in any source file
@@ -100,10 +100,13 @@ LangChain is used here specifically because it has existing abstractions that ma
 ## Known Limitations (demo scope)
 
 - The current dataset (`movies.json`) contains only titles and summaries — no genre, cast, director, or country metadata. Filtering by these fields is part of the target architecture but is **not functional in this demo** since the underlying data doesn't support it yet. Metadata-based filtering is planned for the full project once the database is expanded.
-- Single category only (movies). Series, games are planned for the full project, not this demo.
+- Single category only (movies). Series and Video Games are planned for the full project, not this demo.
 - Terminal interface only — no web app in this phase.
+- No native in-database vector search — the installed SQL Server 2025 instance supports the `VECTOR` type but not semantic search, so retrieval pulls vectors into Python and computes similarity with NumPy.
+- No automatic fallback between the Google and offline embedding models — whichever is active determines which MSSQL table is used; switching requires re-running the pipeline against the other table, not a runtime failover.
+- No self-correction / retry loop in this demo — with only 250 movies, a retry is unlikely to surface meaningfully different candidates, so it isn't worth the added complexity here. See Future Work.
 
-## Suggested Project Structure
+## Project Structure
 
 ```
 data/
@@ -114,9 +117,9 @@ secrets/
 scraper.py               # existing script that produced movies.json
 src/
     config.py         # DB connection, model names, top-N, etc. — reads from secrets/config.txt
-    embedding.py       # embedding calls (Gemini + local fallback)
-    database.py        # MSSQL connection, schema, insert, vector search
-    chains.py           # LangChain components: routing, HyDE, re-rank, self-correction, generation
+    embedding.py       # embedding calls (Google model + offline model, no auto-fallback)
+    database.py        # MSSQL connection, schema for both embedding tables, insert, NumPy similarity search
+    chains.py           # LangChain components: routing, HyDE, re-rank, generation
 build_database.py       # one-time indexing script (Phase 1)
 main.py                 # terminal entry point (Phase 2 loop)
 requirements.txt
@@ -128,6 +131,7 @@ README.md
 
 - Resolve long-term LLM API access (current plan uses region/VPN workarounds that carry risk of being cut off)
 - Expand dataset with genre, cast, director, country, and release-date metadata to enable filtering
-- Add additional categories: series, games
+- Add additional categories: series, books, songs, games
 - Extend the existing web scraper into an agentic component that can autonomously discover and add new entries, rather than running as a one-off manual script
+- Add a self-correction / retry loop — worth revisiting once the catalog is large enough that a retry could plausibly surface better candidates
 - Build and deploy a full web application (currently terminal-only)
