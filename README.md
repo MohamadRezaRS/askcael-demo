@@ -36,7 +36,9 @@ flowchart TD
         N --> O[Re-rank candidates<br/>vs. original query + constraints]
         O --> P{Self-correction check<br/>confident enough?}
         P -->|Yes| Q[Generate final response]
-        P -->|No| Q2[Generate response with<br/>explicit low-confidence caveat]
+        P -->|No, first attempt| S[Retry: broaden search /<br/>regenerate query expansion]
+        S --> N
+        P -->|No, already retried once| Q2[Generate response with<br/>explicit low-confidence caveat]
         Q --> R[Terminal output]
         Q2 --> R
     end
@@ -58,7 +60,7 @@ Everything that happens per user query is built as LangChain components rather t
 - **Query expansion (HyDE)** — for vague or comparison-style queries, an LLM generates a hypothetical full-length summary before embedding, closing the gap between short queries and long stored summaries
 - **Retrieval** — vector similarity search against the MSSQL-stored embeddings, returning the top-N nearest movies
 - **Re-ranking** — a second LLM pass re-scores the retrieved candidates against the original user intent, correcting cases where embedding similarity alone picked a merely-adjacent result
-- **Self-correction** — a confidence check on the final candidate set; if retrieval quality looks weak, the system says so explicitly rather than confidently recommending a poor match
+- **Self-correction** — a confidence check on the re-ranked candidates; if quality looks weak, the pipeline retries once — broadening the search or regenerating the query expansion — before falling back to a final response with an explicit low-confidence caveat if the retry still doesn't produce a strong match. The retry is capped at one attempt to keep response time bounded.
 - **Response generation** — the LLM turns the anchor movie, retrieved candidates, and original query into a natural-language recommendation, instructed to reference only the retrieved candidates (no invented titles)
 
 LangChain is used here specifically because it has existing abstractions that map onto these concepts (hypothetical-document embedding for query expansion, contextual compression / re-ranking retrievers, and graph-based orchestration for the self-correction loop) — the goal is to use those idioms rather than reimplementing this control flow from scratch.
@@ -86,6 +88,15 @@ LangChain is used here specifically because it has existing abstractions that ma
 
 `movies.json` was produced by an existing web scraper, already built and used to collect the 250 IMDb movie titles and summaries that make up the demo dataset. This is a one-off script, run separately from the pipeline described above — it is not part of the Phase 1/Phase 2 flow, it just produces the input file that Phase 1 consumes.
 
+## Configuration & Secrets
+
+The Gemini API key and MSSQL server name must never be hardcoded or committed to version control. Instead:
+
+- All secrets (API key, MSSQL server/connection details) live in a local file inside a dedicated folder, e.g. `secrets/config.txt`, which is never committed
+- `config.py` reads its values from that file at startup — no secret values appear directly in any source file
+- The `secrets/` folder is listed in `.gitignore`, along with standard Python ignores (`__pycache__/`, `*.pyc`, virtual environment folders, etc.)
+- A `secrets/config.example.txt` template, with placeholder values only, **is** committed — so anyone cloning the repo (including the AI coding agent building this) knows what keys/fields are expected without exposing real values
+
 ## Known Limitations (demo scope)
 
 - The current dataset (`movies.json`) contains only titles and summaries — no genre, cast, director, or country metadata. Filtering by these fields is part of the target architecture but is **not functional in this demo** since the underlying data doesn't support it yet. Metadata-based filtering is planned for the full project once the database is expanded.
@@ -97,30 +108,26 @@ LangChain is used here specifically because it has existing abstractions that ma
 ```
 data/
     movies.json
+secrets/
+    config.txt              # real values — gitignored, never committed
+    config.example.txt      # placeholder template — committed
 scraper.py               # existing script that produced movies.json
 src/
-    config.py         # DB connection, model names, top-N, etc.
+    config.py         # DB connection, model names, top-N, etc. — reads from secrets/config.txt
     embedding.py       # embedding calls (Gemini + local fallback)
     database.py        # MSSQL connection, schema, insert, vector search
     chains.py           # LangChain components: routing, HyDE, re-rank, self-correction, generation
 build_database.py       # one-time indexing script (Phase 1)
 main.py                 # terminal entry point (Phase 2 loop)
 requirements.txt
+.gitignore
 README.md
 ```
-
-## Development Guidelines
-
-- **No comments in source code.** Code should be self-explanatory through naming and structure.
-- **Professional, modular structure.** Keep responsibilities separated by file as shown above rather than one large script — this is a portfolio piece as well as a course project.
-- Database setup (`build_database.py`) is plain Python — do not route it through LangChain.
-- The query pipeline (`main.py` + `chains.py`) should be built with LangChain components rather than hand-written branching logic where a suitable LangChain abstraction exists.
-- Prefer the Gemini API as the primary LLM/embedding provider; implement the local fallback (Ollama / sentence-transformers) as a secondary path, not the default.
 
 ## Future Work (beyond this demo — 10-month full project)
 
 - Resolve long-term LLM API access (current plan uses region/VPN workarounds that carry risk of being cut off)
 - Expand dataset with genre, cast, director, country, and release-date metadata to enable filtering
-- Add additional categories: series, books, songs, games
+- Add additional categories: series, games
 - Extend the existing web scraper into an agentic component that can autonomously discover and add new entries, rather than running as a one-off manual script
 - Build and deploy a full web application (currently terminal-only)
