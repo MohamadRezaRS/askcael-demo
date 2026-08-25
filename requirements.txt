@@ -1,0 +1,6 @@
+langchain
+langchain-google-genai
+sentence-transformers
+google-generativeai
+numpy
+pyodbc
