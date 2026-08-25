@@ -32,7 +32,7 @@ def init_db():
             title NVARCHAR(255),
             summary NVARCHAR(MAX),
             word_count INT,
-            embedding VECTOR(384)
+            embedding VECTOR(768)
         )
     """)
     
@@ -43,8 +43,7 @@ def insert_movie(table_name, title, summary, word_count, vector):
     conn = get_connection()
     cursor = conn.cursor()
     vector_str = json.dumps(vector)
-    dim = 768 if table_name == 'online' else 384
-    query = f"INSERT INTO {table_name} (title, summary, word_count, embedding) VALUES (?, ?, ?, CAST(? AS VECTOR({dim})))"
+    query = f"INSERT INTO {table_name} (title, summary, word_count, embedding) VALUES (?, ?, ?, CAST(CAST(? AS NVARCHAR(MAX)) AS VECTOR(768)))"
     cursor.execute(query, (title, summary, word_count, vector_str))
     conn.commit()
     conn.close()

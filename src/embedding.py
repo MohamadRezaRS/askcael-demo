@@ -12,7 +12,7 @@ def get_embedding(text, use_offline=None):
         
     if use_offline:
         if _offline_model is None:
-            _offline_model = SentenceTransformer('all-MiniLM-L6-v2')
+            _offline_model = SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
         return _offline_model.encode(text).tolist()
     else:
         if _online_model is None:
@@ -26,7 +26,7 @@ def get_embeddings(texts, use_offline=None):
         
     if use_offline:
         if _offline_model is None:
-            _offline_model = SentenceTransformer('all-MiniLM-L6-v2')
+            _offline_model = SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
         return _offline_model.encode(texts).tolist()
     else:
         if _online_model is None:
