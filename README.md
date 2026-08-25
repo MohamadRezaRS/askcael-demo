@@ -16,7 +16,7 @@ The project is named **AskCael**, with `askcael.ir` and `askcael.com` reserved a
 flowchart TD
     subgraph Setup["Phase 1 — One-time setup (Python)"]
         A[movies.json<br/>250 IMDb movies] --> B1[Generate embeddings<br/>Google model]
-        A --> B2[Generate embeddings<br/>offline model - all-MiniLM-L6-v2]
+        A --> B2[Generate embeddings<br/>offline model - nomic-ai/nomic-embed-text-v1.5]
         B1 --> C1[(MSSQL<br/>Google-embedding table)]
         B2 --> C2[(MSSQL<br/>offline-embedding table)]
     end
@@ -57,7 +57,7 @@ flowchart TD
 
 ### Phase 1 — Database setup (plain Python, run once)
 
-A standalone script reads `movies.json` and generates embeddings for each movie summary using **two separate embedding models: Google's embedding API (`gemini-embedding-001`, truncated to 768 dimensions), and an offline model (`all-MiniLM-L6-v2`, run locally via `sentence-transformers`)**. Because vectors from different embedding models are not comparable to each other, each model's output goes into its own MSSQL table (`title`, `summary`, `vector`, using SQL Server 2025's native `VECTOR` type). Which table is queried at runtime depends on which embedding model is currently active — this is a fixed choice per run, not an automatic runtime fallback. This setup runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
+A standalone script reads `movies.json` and generates embeddings for each movie summary using **two separate embedding models: Google's embedding API (`gemini-embedding-001`, truncated to 768 dimensions), and an offline model (`nomic-ai/nomic-embed-text-v1.5`, run locally via `sentence-transformers`)**. Because vectors from different embedding models are not comparable to each other, each model's output goes into its own MSSQL table (`title`, `summary`, `vector`, using SQL Server 2025's native `VECTOR` type). Which table is queried at runtime depends on which embedding model is currently active — this is a fixed choice per run, not an automatic runtime fallback. This setup runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
 
 ### Phase 2 — Query pipeline (LangChain)
 
@@ -98,7 +98,7 @@ Every query passes an on-topic check — this stops the system being used for un
 
 - **Orchestration:** LangChain (query pipeline only — not database setup)
 - **LLM:** Gemini API (Flash / Flash-Lite, free tier) — local Ollama model as offline fallback
-- **Embeddings:** two options — Google's `gemini-embedding-001` (truncated to 768 dimensions) or `all-MiniLM-L6-v2` (offline, via `sentence-transformers`, 384 dimensions) — since the two are not vector-compatible, each has its own MSSQL table, and only one is active per run (no automatic runtime fallback between them)
+- **Embeddings:** two options — Google's `gemini-embedding-001` (truncated to 768 dimensions) or `nomic-ai/nomic-embed-text-v1.5` (offline, via `sentence-transformers`, 768 dimensions) — since the two are not vector-compatible, each has its own MSSQL table, and only one is active per run (no automatic runtime fallback between them)
 - **Database:** MSSQL (SQL Server 2025), native `VECTOR` column type. The installed instance does not have semantic search / native distance functions enabled, so similarity is computed in Python with NumPy after pulling candidate vectors, not via an in-database vector search function
 - **Interface:** terminal only for this demo — no web layer
 
