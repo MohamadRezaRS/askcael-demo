@@ -6,3 +6,4 @@ sentence-transformers
 google-generativeai
 numpy
 pyodbc
+einops
