@@ -74,6 +74,14 @@ Everything that happens per user query is built as LangChain components rather t
 
 LangChain is used here specifically because it has existing abstractions that map onto these concepts (hypothetical-document embedding for query expansion, contextual compression / re-ranking retrievers) — the goal is to use those idioms rather than reimplementing this control flow from scratch. Self-correction (a confidence-check retry loop) is deliberately left out of this demo — see Future Work.
 
+## Document Granularity & Chunking Strategy
+
+This project intentionally skips any form of text chunking, mapping exactly one vector to each movie. This 1:1 strategy is driven by three main factors:
+
+- **Sufficient Context Windows:** The IMDb plot summaries in our dataset average around 600 words (roughly 800 tokens). Both of our embedding models have context limits that easily swallow these summaries whole (`models/gemini-embedding-001` handles 2,048 tokens, and `nomic-embed-text-v1.5` handles 8,192). 
+- **Preserving Narrative Context:** A movie's synopsis is a cohesive unit. Themes, character developments, and genre nuances stretch from the beginning to the end of the text. Arbitrarily slicing a plot summary into chunks would shatter that context and weaken the semantic meaning of the individual pieces.
+- **Cleaner Retrieval:** Embedding the entire document guarantees a strict one-to-one relationship in the vector database. If we chunked the texts, a single movie could easily dominate the top-N similarity results with multiple highly-ranked chunks, crowding out other viable recommendations.
+
 ## Query Guardrails (Staying On-Topic)
 
 Every query passes an on-topic check — this stops the system being used for unrelated tasks (homework, code generation, general chat) the way general-purpose chatbots deployed on narrow-purpose interfaces sometimes are. Three layers:
