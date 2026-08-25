@@ -25,7 +25,7 @@ def main():
         print(f"[{current}/{total_movies}] Inserted {title} into {table_name} ({word_count} words)")
         
         if not USE_OFFLINE_MODEL:
-            time.sleep(0.6)
+            time.sleep(2)
 
 if __name__ == "__main__":
     main()
