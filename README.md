@@ -40,11 +40,10 @@ flowchart TD
         L --> M[Anchor vector]
         H --> M
 
-        M --> N[Pull candidate vectors from<br/>matching MSSQL table]
+        M --> N[Pull candidate vectors & short summaries<br/>from matching MSSQL table]
         N --> N2[Compute similarity in Python<br/>NumPy cosine similarity]
-        N2 --> O[Re-rank candidates<br/>vs. original query + constraints]
-        O --> Q[Generate final response]
-        Q --> R[Terminal output]
+        N2 --> P[Re-rank & Generate response<br/>single LLM pass with short summaries]
+        P --> R[Terminal output]
         X --> R
         Y --> R
     end
@@ -57,7 +56,7 @@ flowchart TD
 
 ### Phase 1 — Database setup (plain Python, run once)
 
-A standalone script reads `movies.json` and generates embeddings for each movie summary using **two separate embedding models: Google's embedding API (`gemini-embedding-001`, truncated to 768 dimensions), and an offline model (`nomic-ai/nomic-embed-text-v1.5`, run locally via `sentence-transformers`)**. Because vectors from different embedding models are not comparable to each other, each model's output goes into its own MSSQL table (`title`, `summary`, `vector`, using SQL Server 2025's native `VECTOR` type). Which table is queried at runtime depends on which embedding model is currently active — this is a fixed choice per run, not an automatic runtime fallback. This setup runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
+A standalone script reads `movies.json` and generates embeddings for each movie summary using **two separate embedding models: Google's embedding API (`gemini-embedding-001`, truncated to 768 dimensions), and an offline model (`nomic-ai/nomic-embed-text-v1.5`, run locally via `sentence-transformers`)**. Because vectors from different embedding models are not comparable to each other, each model's output goes into its own MSSQL table (`title`, `summary`, `short_summary`, `vector`, using SQL Server 2025's native `VECTOR` type). Which table is queried at runtime depends on which embedding model is currently active — this is a fixed choice per run, not an automatic runtime fallback. This setup runs once per catalog version — not on every query, and not through LangChain. It is a simple, linear ETL job and does not need an orchestration framework.
 
 ### Phase 2 — Query pipeline (LangChain)
 
@@ -69,8 +68,8 @@ Everything that happens per user query is built as LangChain components rather t
 - **Multi-title cap** — cases 5 and 6 cap the number of referenced movies actually fed into the HyDE generation step at 2, to keep the prompt short and the resulting hypothetical summary focused. If more than 2 titles are mentioned, the LLM selects which 2 are most relevant to the user's request rather than taking them in listed order.
 - **State Preservation** — the original raw user query and any extracted constraints are carried through the entire pipeline as state. Both the re-ranking step and the final generation step evaluate candidates against this preserved original intent, not just the transformed anchor vector.
 - **Retrieval** — the installed SQL Server 2025 instance supports the `VECTOR` column type but not built-in semantic search, so the pipeline pulls candidate vectors from the matching MSSQL table (Google or offline, whichever is active) into Python and computes true cosine similarity (dot product divided by norms) with NumPy to get the top-N nearest movies
-- **Re-ranking** — a second LLM pass re-scores the retrieved candidates against the original user intent and constraints, correcting cases where embedding similarity alone picked a merely-adjacent result
-- **Response generation** — the LLM turns the anchor movie, retrieved candidates, and original query into a natural-language recommendation, instructed to reference only the retrieved candidates (no invented titles)
+- **Retrieval & Short Summaries** — to drastically cut down on LLM context costs, the pipeline retrieves pre-generated 50-word `short_summary` versions of the candidate movies rather than their full-length 800-token summaries.
+- **Combined Re-ranking & Generation** — rather than doing two separate expensive LLM calls (one to rank, one to write), a single LLM pass receives the top 10 retrieved `short_summary` candidates (~500 tokens total). It evaluates them against the preserved original user intent, selects between 3 and 5 of the most relevant titles, and writes the conversational response in one shot. No invented titles are allowed.
 - **Fallback for unclassifiable queries** — if a query doesn't cleanly fit any of the six cases, the pipeline does not guess or crash; it returns a fixed message telling the user the system can't help with that request as phrased and suggesting they try rephrasing, then keeps running normally for the next query.
 
 LangChain is used here specifically because it has existing abstractions that map onto these concepts (hypothetical-document embedding for query expansion, contextual compression / re-ranking retrievers) — the goal is to use those idioms rather than reimplementing this control flow from scratch. Self-correction (a confidence-check retry loop) is deliberately left out of this demo — see Future Work.
@@ -90,6 +89,7 @@ Every query passes an on-topic check — this stops the system being used for un
 1. **On-topic check, merged into the classification call** — the same LLM call that assigns a query to one of the six cases also decides whether it's a movie-recommendation request at all. If not, it returns a fixed, polite refusal immediately, without touching retrieval or the main generation prompt.
 2. **Hardened system prompt** — the assistant's prompt states its narrow purpose explicitly and instructs it to decline anything else. This is a second layer, not the only one — a system prompt alone can be talked around by a sufficiently determined user, which is why step 1 exists as an independent check in front of it.
 3. **Retrieved data treated as data, not instructions** — movie summaries (sourced from the scraper) are only ever referenced as content to describe in the generation prompt, never treated as instructions to follow, in case any scraped text ever contains something instruction-like.
+4. **Hard query length cap** — any query exceeding 300 words is immediately rejected to prevent prompt stuffing or malicious context-window attacks.
 
 ## Query Type Handling
 
@@ -146,6 +146,7 @@ src/
     database.py        # MSSQL connection, schema for both embedding tables, insert, NumPy similarity search
     chains.py           # LangChain components: routing, HyDE, re-rank, generation
 build_database.py       # one-time indexing script (Phase 1)
+shorten_summaries.py    # one-time script to generate 50-word summaries for the DB
 main.py                 # terminal entry point (Phase 2 loop)
 requirements.txt
 .gitignore
