@@ -20,6 +20,7 @@ def init_db():
             id INT IDENTITY(1,1) PRIMARY KEY,
             title NVARCHAR(255),
             summary NVARCHAR(MAX),
+            short_summary NVARCHAR(MAX),
             word_count INT,
             embedding VECTOR(768)
         )
@@ -31,6 +32,7 @@ def init_db():
             id INT IDENTITY(1,1) PRIMARY KEY,
             title NVARCHAR(255),
             summary NVARCHAR(MAX),
+            short_summary NVARCHAR(MAX),
             word_count INT,
             embedding VECTOR(768)
         )
@@ -56,17 +58,22 @@ def cosine_similarity(a, b):
 def vector_search(table_name, query_vector, top_n=10):
     conn = get_connection()
     cursor = conn.cursor()
-    query = f"SELECT title, summary, CAST(embedding AS NVARCHAR(MAX)) FROM {table_name}"
+    query = f"SELECT title, summary, short_summary, CAST(embedding AS NVARCHAR(MAX)) FROM {table_name}"
     cursor.execute(query)
     rows = cursor.fetchall()
     conn.close()
     
     results = []
     for row in rows:
-        title, summary, emb_str = row
+        title, summary, short_summary, emb_str = row
         emb_arr = np.array(json.loads(emb_str))
         sim = cosine_similarity(query_vector, emb_arr)
-        results.append({"similarity": sim, "title": title, "summary": summary})
+        results.append({
+            "similarity": sim, 
+            "title": title, 
+            "summary": summary,
+            "short_summary": short_summary
+        })
         
     results.sort(key=lambda x: x["similarity"], reverse=True)
     return results[:top_n]
