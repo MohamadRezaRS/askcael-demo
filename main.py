@@ -5,7 +5,6 @@ warnings.filterwarnings("ignore")
 from src.chains import (
     build_classifier_chain, 
     build_hyde_chain, 
-    build_rerank_chain, 
     build_generation_chain
 )
 from src.database import get_connection, vector_search
@@ -51,7 +50,6 @@ def get_stored_vector(title):
 def process_query(query: str) -> str:
     classifier_chain = build_classifier_chain()
     hyde_chain = build_hyde_chain()
-    rerank_chain = build_rerank_chain()
     gen_chain = build_generation_chain()
     
     titles = get_all_titles()
@@ -115,35 +113,12 @@ def process_query(query: str) -> str:
     if not filtered_candidates:
         return "No matching candidates found after exclusions."
         
-    candidates_text = "\n\n".join([f"Title: {c['title']}\nSummary: {c['summary']}" for c in filtered_candidates])
-    
-    try:
-        rerank_result = rerank_chain.invoke({
-            "query": query,
-            "constraint_text": classification.constraint_text or "",
-            "candidates": candidates_text
-        })
-        final_titles = rerank_result.ranked_titles
-    except Exception:
-        final_titles = [c['title'] for c in filtered_candidates[:FINAL_TOP_N]]
-        
-    final_candidates = [c for c in filtered_candidates if c['title'] in final_titles]
-    
-    if len(final_candidates) < FINAL_TOP_N:
-        existing = {c['title'] for c in final_candidates}
-        for c in filtered_candidates:
-            if c['title'] not in existing:
-                final_candidates.append(c)
-                if len(final_candidates) >= FINAL_TOP_N:
-                    break
-                    
-    final_candidates = final_candidates[:FINAL_TOP_N]
-        
-    final_candidates_text = "\n\n".join([f"Title: {c['title']}\nSummary: {c['summary']}" for c in final_candidates])
+    candidates_text = "\n\n".join([f"Title: {c['title']}\nSummary: {c['short_summary']}" for c in filtered_candidates])
     
     response = gen_chain.invoke({
         "query": query,
-        "candidates": final_candidates_text
+        "constraint_text": classification.constraint_text or "",
+        "candidates": candidates_text
     })
     
     return response
@@ -155,6 +130,11 @@ def main():
             if query.strip().lower() in ['quit', 'exit']:
                 break
             if not query.strip():
+                continue
+                
+            word_count = len(query.strip().split())
+            if word_count > 300:
+                print("\nError: Your request is too long. Please keep it under 300 words.\n")
                 continue
             
             response = process_query(query)

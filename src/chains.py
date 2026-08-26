@@ -51,18 +51,10 @@ def build_hyde_chain():
     ])
     return prompt | llm | StrOutputParser()
 
-def build_rerank_chain():
-    llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", f"Evaluate the candidates against the user's original query. Select exactly {FINAL_TOP_N} titles and list them in descending order of relevance."),
-        ("human", "Original Query: {query}\nConstraints: {constraint_text}\nCandidates:\n{candidates}")
-    ])
-    return prompt | llm.with_structured_output(ReRankResult)
-
 def build_generation_chain():
     llm = get_llm()
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Write a conversational movie recommendation using ONLY the provided candidates. Never invent or recommend a title not in the candidates list."),
-        ("human", "Original Query: {query}\nCandidates:\n{candidates}")
+        ("system", f"You are a helpful movie recommendation assistant. You will be provided with up to 10 candidate movies and their short summaries. Select a minimum of 3 and a maximum of {FINAL_TOP_N} most relevant movies from these candidates. Write a conversational recommendation response for the user explaining why these specific movies fit their request. NEVER invent or recommend a title not explicitly listed in the candidates. Constraints must be respected."),
+        ("human", "Original Query: {query}\nConstraints: {constraint_text}\nCandidates:\n{candidates}")
     ])
     return prompt | llm | StrOutputParser()
