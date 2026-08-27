@@ -37,7 +37,7 @@ def build_classifier_chain():
 Available exact titles:
 {titles}
 
-Only extract titles that exactly match a title from the list above. Resolve typos to the exact title.
+CRITICAL: You must aggressively fix typos and fuzzy match user input to the EXACT titles from the list (e.g. 'incption' -> 'Inception', 'th matrxx' -> 'The Matrix'). If a user mentions a movie, ALWAYS populate referenced_titles with the perfectly spelled exact match from the list above. Do NOT include movies in the recommendation response if they are in referenced_titles.
 """),
         ("human", "{query}")
     ])
