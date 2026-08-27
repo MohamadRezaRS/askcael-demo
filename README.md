@@ -125,7 +125,7 @@ Every query passes an on-topic check — this stops the system being used for un
 ## Known Limitations (demo scope)
 
 - The current dataset (`movies.json`) contains only titles and summaries — no genre, cast, director, or country metadata. Filtering by these fields is part of the target architecture but is **not functional in this demo** since the underlying data doesn't support it yet. Metadata-based filtering is planned for the full project once the database is expanded.
-- Single category only (movies). Series, books, games, and songs are planned for the full project, not this demo.
+- Single category only (movies). Series and games are planned for the full project, not this demo.
 - Terminal interface only — no web app in this phase.
 - No native in-database vector search — the installed SQL Server 2025 instance supports the `VECTOR` type but not semantic search, so retrieval pulls vectors into Python and computes similarity with NumPy.
 - No automatic fallback between the Google and offline embedding models — whichever is active determines which MSSQL table is used; switching requires re-running the pipeline against the other table, not a runtime failover.
