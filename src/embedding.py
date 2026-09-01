@@ -1,10 +1,35 @@
-from sentence_transformers import SentenceTransformer
-import numpy as np
 import os
+import sys
+import io
+import logging
+import warnings
+import numpy as np
+
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+
+warnings.filterwarnings("ignore")
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
+from sentence_transformers import SentenceTransformer
 from src.config import USE_OFFLINE_MODEL, GEMINI_API_KEY
 from google import genai
 
 _offline_model = None
+
+def init_embedding_model():
+    global _offline_model
+    if USE_OFFLINE_MODEL and _offline_model is None:
+        old_stderr = sys.stderr
+        try:
+            sys.stderr = io.StringIO()
+            _offline_model = SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
+        finally:
+            sys.stderr = old_stderr
 
 def _truncate_and_normalize(vector, dim=768):
     arr = np.array(vector[:dim])
@@ -20,7 +45,7 @@ def get_embedding(text, use_offline=None):
         
     if use_offline:
         if _offline_model is None:
-            _offline_model = SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
+            init_embedding_model()
         return _offline_model.encode(text).tolist()
     else:
         import time
@@ -44,7 +69,7 @@ def get_embeddings(texts, use_offline=None):
         
     if use_offline:
         if _offline_model is None:
-            _offline_model = SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)
+            init_embedding_model()
         return _offline_model.encode(texts).tolist()
     else:
         client = genai.Client(api_key=GEMINI_API_KEY)
@@ -53,3 +78,4 @@ def get_embeddings(texts, use_offline=None):
             contents=texts,
         )
         return [_truncate_and_normalize(emb.values) for emb in response.embeddings]
+

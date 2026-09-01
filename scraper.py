@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 header = {"User-Agent": "PostmanRuntime/7.32.3"}
 
 
-def scrape_movie_urls():  # SCRAPES ALL THE MOVIES URLS
+def scrape_movie_urls():
     pattern = r'/title/tt[0-9]+/'
     top_page_url = 'https://m.imdb.com/chart/top/'
     top_page_response = requests.get(top_page_url, headers=header)
@@ -76,7 +76,6 @@ def create_url_list(movie_urls, thread_urls):
 
 
 def start_process():
-    # scrape_movie_urls()
     scrape_movie_data()
     checker()
 
@@ -85,6 +84,3 @@ def checker():
     with open('data/movies_infos_raw.json', 'r') as on_check_file:
         on_check_file = json.load(on_check_file)
         print(len(on_check_file.keys()))
-        # if len(on_check_file.keys()) != 250:
-        #     print('failed to scrape everything! restarting...')
-        #     start_process()

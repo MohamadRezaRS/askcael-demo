@@ -8,7 +8,7 @@ from src.chains import (
     build_generation_chain
 )
 from src.database import get_connection, vector_search
-from src.embedding import get_embedding
+from src.embedding import get_embedding, init_embedding_model
 from src.config import USE_OFFLINE_MODEL, RETRIEVAL_TOP_N, FINAL_TOP_N
 
 FALLBACK_OFF_TOPIC = "I'm a movie recommendation assistant. I can't help with that request."
@@ -124,6 +124,9 @@ def process_query(query: str) -> str:
     return response
 
 def main():
+    if USE_OFFLINE_MODEL:
+        init_embedding_model()
+
     while True:
         try:
             query = input("\nEnter your movie request (or 'quit'): ")
