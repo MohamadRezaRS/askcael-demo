@@ -1,9 +1,16 @@
 langchain
 langchain-community
+langchain-core
 langchain-ollama
 langchain-google-genai
-sentence-transformers
+google-genai
 google-generativeai
+sentence-transformers
+transformers
+torch
 numpy
 pyodbc
+pydantic
+beautifulsoup4
+requests
 einops
